@@ -1,4 +1,4 @@
-const CACHE = 'pipe-stock-v2';
+const CACHE = 'pipe-stock-v3';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {
