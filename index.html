@@ -161,6 +161,8 @@
     width: 100%; font-family: inherit; font-size: 15px; padding: 10px 11px; border-radius: 9px;
     border: 1px solid var(--border); background: var(--bg); color: var(--ink); outline: none;
   }
+  .field input:focus, .field select:focus { border-color: var(--steel-light); box-shadow: 0 0 0 3px rgba(51,88,111,0.12); }
+  .field-hint { display: block; color: var(--ink-muted); font-size: 11px; line-height: 1.4; margin-top: 5px; }
   .field-row { display: flex; gap: 10px; }
   .field-row .field { flex: 1; }
   .form-error { background: var(--danger-bg); color: var(--danger); font-size: 12.5px; border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; display: none; }
@@ -243,11 +245,14 @@
           <label>ਕਿਸਮ</label>
           <input type="text" id="fType" placeholder="ਜਿਵੇਂ: GI ਪਾਈਪ" />
         </div>
+        <div class="field">
+          <label>ਸਾਈਜ਼ / ਫਾਰਮੈਟ</label>
+          <select id="fSize">
+            <option value="">ਸਾਈਜ਼ ਚੁਣੋ</option>
+          </select>
+          <span class="field-hint">ਅਪਲੋਡ ਕੀਤੇ ਸਟਾਕ ਚਾਰਟ ਵਾਲੇ ਸਾਈਜ਼</span>
+        </div>
         <div class="field-row">
-          <div class="field">
-            <label>ਸਾਈਜ਼</label>
-            <input type="text" id="fSize" placeholder="ਜਿਵੇਂ: 1 ਇੰਚ" />
-          </div>
           <div class="field">
             <label>ਮੋਟਾਈ (ਜੇ ਲੋੜ ਹੋਵੇ)</label>
             <input type="text" id="fThickness" placeholder="ਜਿਵੇਂ: 16 ਗੇਜ" />
@@ -299,6 +304,12 @@
 (function () {
   var STORAGE_KEY = 'steel-pipe-stock-items';
   var LOW_STOCK_THRESHOLD = 10;
+  var SIZE_PRESETS = [
+    { group: '1 Inchi', sizes: ['1x1-7', '1x1 8', '1x1-10', '3lod7 kg', '3lod10kg'] },
+    { group: '1.25 Inchi', sizes: ['41x9', '41x12', '30x30-9', '30x30-12', '40x25-9', '40x25-12'] },
+    { group: '1.5 Inchi', sizes: ['48-OD-12', '48-OD-14', '38X38-9', '38X38-12', '38X38-14', '2X1-9', '2X1-12', '2X1-14'] },
+    { group: '2 Inchi', sizes: ['2X2-12', '2X2-15', '2X2-20', '60X40-15', '60X40-20', '58X15', '58X20', '3x1x12', '3x1x15', '62x32x12', '62x32x15'] }
+  ];
   var items = [];
   var editingId = null;
   var confirmDeleteId = null;
@@ -306,12 +317,83 @@
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
   function stockLevel(q) { var n = Number(q); if (n <= 0) return 'out'; if (n <= LOW_STOCK_THRESHOLD) return 'low'; return 'ok'; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function presetValue(group, size) { return group + ' — ' + size; }
+  function displaySize(item) {
+    var prefix = item.type + ' — ';
+    var size = String(item.size || '');
+    return size.indexOf(prefix) === 0 ? size.slice(prefix.length) : size;
+  }
+
+  function ensurePresetItems() {
+    var changed = false;
+    var usedIds = {};
+    var presetItems = [];
+
+    SIZE_PRESETS.forEach(function (preset, groupIndex) {
+      preset.sizes.forEach(function (size, sizeIndex) {
+        var presetKey = 'chart-' + groupIndex + '-' + sizeIndex;
+        var value = presetValue(preset.group, size);
+        var existing = items.find(function (item) {
+          if (usedIds[item.id]) return false;
+          return item.presetKey === presetKey ||
+            (!item.presetKey && item.type === preset.group && (item.size === value || item.size === size));
+        });
+
+        if (!existing) {
+          existing = {
+            id: uid(), type: preset.group, size: value, thickness: '', quantity: 0,
+            unit: 'ਪੀਸ', remark: '', presetKey: presetKey, createdAt: Date.now()
+          };
+          changed = true;
+        } else if (existing.presetKey !== presetKey || existing.type !== preset.group || existing.size !== value) {
+          existing.presetKey = presetKey;
+          existing.type = preset.group;
+          existing.size = value;
+          changed = true;
+        }
+
+        usedIds[existing.id] = true;
+        presetItems.push(existing);
+      });
+    });
+
+    var customItems = items.filter(function (item) { return !usedIds[item.id]; });
+    if (items.length !== presetItems.length + customItems.length || items.some(function (item, index) {
+      return (presetItems.concat(customItems)[index] || {}).id !== item.id;
+    })) changed = true;
+    items = presetItems.concat(customItems);
+    return changed;
+  }
+
+  function populateSizePresets(selectedValue) {
+    var select = document.getElementById('fSize');
+    select.innerHTML = '<option value="">ਸਾਈਜ਼ ਚੁਣੋ</option>';
+    SIZE_PRESETS.forEach(function (preset) {
+      var group = document.createElement('optgroup');
+      group.label = preset.group;
+      preset.sizes.forEach(function (size) {
+        var option = document.createElement('option');
+        option.value = presetValue(preset.group, size);
+        option.textContent = size;
+        group.appendChild(option);
+      });
+      select.appendChild(group);
+    });
+    if (selectedValue && !Array.from(select.options).some(function (option) { return option.value === selectedValue; })) {
+      var savedOption = document.createElement('option');
+      savedOption.value = selectedValue;
+      savedOption.textContent = selectedValue + ' (ਪੁਰਾਣੀ ਐਂਟਰੀ)';
+      select.appendChild(savedOption);
+    }
+    select.value = selectedValue || '';
+  }
 
   function load() {
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
       if (raw) items = JSON.parse(raw) || [];
     } catch (e) { items = []; }
+    if (ensurePresetItems()) save();
   }
   function save() {
     try {
@@ -368,7 +450,7 @@
             '<div class="card-body">' +
               '<div class="card-main">' +
                 '<p class="card-type">' + esc(it.type) + '</p>' +
-                '<p class="card-size">' + esc(it.size) + (it.thickness ? ' &middot; ' + esc(it.thickness) : '') + '</p>' +
+                '<p class="card-size">' + esc(displaySize(it)) + (it.thickness ? ' &middot; ' + esc(it.thickness) : '') + '</p>' +
                 '<div class="card-tags">' + tags + '</div>' +
                 confirmRow +
               '</div>' +
@@ -376,7 +458,7 @@
                 '<div class="card-qty mono">' + esc(it.quantity) + '<span class="unit">' + esc(it.unit) + '</span></div>' +
                 '<div class="card-actions">' +
                   '<button type="button" data-edit="' + it.id + '" title="ਬਦਲੋ">&#9998;</button>' +
-                  '<button type="button" class="del" data-del="' + it.id + '" title="ਮਿਟਾਓ">&#128465;</button>' +
+                  (it.presetKey ? '' : '<button type="button" class="del" data-del="' + it.id + '" title="ਮਿਟਾਓ">&#128465;</button>') +
                 '</div>' +
               '</div>' +
             '</div>' +
@@ -386,23 +468,26 @@
     }
 
     document.getElementById('printBody').innerHTML = items.map(function (it) {
-      return '<tr><td>' + esc(it.type) + '</td><td>' + esc(it.size) + '</td><td>' + esc(it.thickness || '-') +
+      return '<tr><td>' + esc(it.type) + '</td><td>' + esc(displaySize(it)) + '</td><td>' + esc(it.thickness || '-') +
         '</td><td>' + esc(it.quantity) + '</td><td>' + esc(it.unit) + '</td><td>' + esc(it.remark || '-') + '</td></tr>';
     }).join('');
   }
 
   function openSheet(item) {
+    var isPreset = Boolean(item && item.presetKey);
     document.getElementById('formError').style.display = 'none';
     editingId = item ? item.id : null;
-    document.getElementById('sheetTitle').textContent = item ? 'ਐਂਟਰੀ ਬਦਲੋ' : 'ਨਵਾਂ ਮਾਲ ਜੋੜੋ';
+    document.getElementById('sheetTitle').textContent = isPreset ? 'ਸਟਾਕ ਅੱਪਡੇਟ ਕਰੋ' : (item ? 'ਐਂਟਰੀ ਬਦਲੋ' : 'ਨਵਾਂ ਮਾਲ ਜੋੜੋ');
+    document.getElementById('fType').disabled = isPreset;
     document.getElementById('fType').value = item ? item.type : '';
-    document.getElementById('fSize').value = item ? item.size : '';
+    populateSizePresets(item ? item.size : '');
+    document.getElementById('fSize').disabled = isPreset;
     document.getElementById('fThickness').value = item ? (item.thickness || '') : '';
     document.getElementById('fQuantity').value = item ? item.quantity : '';
     document.getElementById('fUnit').value = item ? item.unit : 'ਪੀਸ';
     document.getElementById('fRemark').value = item ? (item.remark || '') : '';
     document.getElementById('sheetOverlay').classList.add('open');
-    setTimeout(function () { document.getElementById('fType').focus(); }, 50);
+    setTimeout(function () { document.getElementById(isPreset ? 'fQuantity' : 'fType').focus(); }, 50);
   }
   function closeSheet() { document.getElementById('sheetOverlay').classList.remove('open'); }
 
@@ -460,7 +545,7 @@
 
   document.getElementById('exportBtn').addEventListener('click', function () {
     var rows = items.map(function (it) {
-      return { 'ਕਿਸਮ': it.type, 'ਸਾਈਜ਼': it.size, 'ਮੋਟਾਈ': it.thickness || '-', 'ਮਾਤਰਾ': it.quantity, 'ਯੂਨਿਟ': it.unit, 'ਟਿੱਪਣੀ': it.remark || '-' };
+      return { 'ਕਿਸਮ': it.type, 'ਸਾਈਜ਼': displaySize(it), 'ਮੋਟਾਈ': it.thickness || '-', 'ਮਾਤਰਾ': it.quantity, 'ਯੂਨਿਟ': it.unit, 'ਟਿੱਪਣੀ': it.remark || '-' };
     });
     var ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 20 }];
