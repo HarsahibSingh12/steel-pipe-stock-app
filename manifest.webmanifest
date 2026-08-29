@@ -1,0 +1,15 @@
+{
+  "name": "ਸਟੀਲ ਪਾਈਪ ਸਟਾਕ",
+  "short_name": "ਪਾਈਪ ਸਟਾਕ",
+  "description": "ਸਟੀਲ ਪਾਈਪ ਦਾ ਸਟਾਕ ਰਿਕਾਰਡ ਰੱਖਣ ਲਈ ਐਪ",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EDEFF1",
+  "theme_color": "#1F3A4D",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
